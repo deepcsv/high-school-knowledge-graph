@@ -23,14 +23,18 @@ const SUBJ_COLOR = {
   physics: { main: "#4da3ff", deep: "#173f66", soft: "#4da3ff26" },
   biology: { main: "#4cd68a", deep: "#14532f", soft: "#4cd68a26" },
   geo:     { main: "#ffab5e", deep: "#6b3f14", soft: "#ffab5e26" },
+  chemistry:{ main: "#ffab5e", deep: "#6b3f14", soft: "#ffab5e26" },
 };
 const KIND_ORDER = ["基础","发展","贯通","类比","联系","应用","跨科"];
 
 /* ---------- 1. 构建图模型 ---------- */
-/* 页面可通过 window.PAGE_SUBJECT 指定只展示单科目（"physics" | "biology"） */
+/* 页面可通过 window.PAGE_SUBJECT 指定只展示单科目（"physics" | "biology" | "chemistry"） */
 const PAGE_SUBJECT = window.PAGE_SUBJECT || "all";
-const pageSubjects = PAGE_SUBJECT === "all" ? SUBJECTS : SUBJECTS.filter(s => s.id === PAGE_SUBJECT);
-const pageBooks = PAGE_SUBJECT === "all" ? BOOKS : BOOKS.filter(b => b.subject === PAGE_SUBJECT);
+const IS_CHEM = PAGE_SUBJECT === "chemistry";
+const pageSubjects = IS_CHEM ? [CHEM.subject]
+  : (PAGE_SUBJECT === "all" ? SUBJECTS : SUBJECTS.filter(s => s.id === PAGE_SUBJECT));
+const pageBooks = IS_CHEM ? []
+  : (PAGE_SUBJECT === "all" ? BOOKS : BOOKS.filter(b => b.subject === PAGE_SUBJECT));
 
 const nodes = [];          // {id,label,type,subject,book,ch,sec,subIdx,x,y,vx,vy}
 const nodeById = new Map();
@@ -52,6 +56,7 @@ for (const s of pageSubjects) {
   subjNode[s.id] = addNode({ id: "S:" + s.id, label: s.name, type: "subject", subject: s.id });
 }
 
+if (!IS_CHEM) {
 for (const book of pageBooks) {
   const bid = book.id;
   addNode({ id: bid, label: book.name, type: "book", subject: book.subject, book: bid, full: book.full });
@@ -73,8 +78,52 @@ for (const book of pageBooks) {
     });
   }
 }
-for (const c of CROSS_LINKS) {
+for (const c of (typeof CROSS_LINKS !== "undefined" ? CROSS_LINKS : [])) {
   if (nodeById.has(c.a) && nodeById.has(c.b)) addLink(c.a, c.b, "cross", c.kind, c.note);
+}
+}
+
+/* ---------- 1.4 化学模式：反应类型图谱 ---------- */
+const REACTION_COLOR = {
+  "化合反应": "#4da3ff", "分解反应": "#ff7a88", "置换反应": "#4cd68a", "复分解反应": "#b18cff",
+  "中和反应": "#6fd3ff", "氧化还原反应": "#ffc866",
+  "取代反应": "#ff9d7a", "加成反应": "#63c7e8", "酯化反应": "#f2a0c8", "水解反应": "#8ee0b8",
+  "消去反应": "#d9b36b", "加聚反应": "#a8b6ff", "缩聚反应": "#e6b0ff", "氧化反应": "#ffa07a",
+};
+let reactionFilter = null;
+let chemBranchOf = new Map();     // item/topic id -> branch
+let chemTopicOf = new Map();      // item id -> topic
+let chemStats = { topics: 0, items: 0, reactions: 0 };
+
+function buildChemGraph() {
+  for (const br of CHEM.branches) {
+    addNode({ id: br.id, label: br.name, type: "book", subject: "chemistry",
+              book: br.id, full: br.desc, fillColor: br.color, branch: br.id });
+    addLink("S:" + CHEM.subject.id, br.id, "hier");
+    chemBranchOf.set(br.id, br);
+    for (const topic of br.topics) {
+      addNode({ id: topic.id, label: topic.name, type: "chapter", subject: "chemistry",
+                book: topic.id, branch: br.id, fillColor: br.color });
+      addLink(br.id, topic.id, "hier");
+      chemBranchOf.set(topic.id, br);
+      chemTopicOf.set(topic.id, topic);
+      chemStats.topics++;
+      for (const it of topic.items) {
+        const isConcept = it.cat === "概念";
+        addNode({ ...it, label: it.label, type: "section", subject: "chemistry", book: topic.id,
+                  branch: br.id, topic: topic.id,
+                  fillColor: isConcept ? "#9fb7e8" : br.color });
+        addLink(topic.id, it.id, "hier");
+        chemBranchOf.set(it.id, br);
+        chemTopicOf.set(it.id, topic);
+        chemStats.items++;
+      }
+    }
+  }
+  for (const r of CHEM.reactions) {
+    if (nodeById.has(r.a) && nodeById.has(r.b)) addLink(r.a, r.b, "reaction", r.kind, r.eq);
+    chemStats.reactions++;
+  }
 }
 
 /* ---------- 1.5 知识点标注层 ---------- */
@@ -414,7 +463,7 @@ const KP_IMG = {
 
 /* 统计信息 */
 const stats = {};
-for (const s of SUBJECTS) {
+for (const s of (IS_CHEM ? [] : SUBJECTS)) {
   const bs = BOOKS.filter(b => b.subject === s.id);
   stats[s.id] = {
     books: bs.length,
@@ -424,7 +473,17 @@ for (const s of SUBJECTS) {
 }
 
 /* ---------- 2. 可见性 ---------- */
-const bookVisible = new Map(BOOKS.map(b => [b.id, true]));
+const bookVisible = new Map((typeof BOOKS !== "undefined" ? BOOKS : []).map(b => [b.id, true]));
+if (IS_CHEM) {
+  for (const br of CHEM.branches) {
+    bookVisible.set(br.id, true);
+    for (const t of br.topics) {
+      bookVisible.set(t.id, true);
+      for (const it of t.items) bookVisible.set(it.id, true);
+    }
+  }
+  buildChemGraph();
+}
 let subjectFilter = "all";
 function nodeVisible(n) {
   if (n.type === "kp") return showKP && n.parent.visible;
@@ -444,12 +503,13 @@ const sim = {
   repulsion: 2600, linkK: 0.045, gravity: 0.012, damping: 0.86, maxV: 14,
 };
 const REST = {
-  "S:physics": 460, "S:biology": 460,             // 科目-教材
+  "S:physics": 460, "S:biology": 460, "S:chemistry": 380,   // 科目-教材
   book: 150, chapter: 68, section: 26, sub: 15,   // 层级
   kp: 13,                                          // 知识点挂接
   cross: 340,
 };
 function restLength(l) {
+  if (l.type === "reaction") return 135;           // 反应连线（跨专题）
   if (l.type === "cross") return REST.cross;
   const t = l.t.type;                              // 层级连线的子节点类型
   return REST[t] || 40;
@@ -480,7 +540,7 @@ function simulateStep() {
     const dx = l.t.x - l.s.x, dy = l.t.y - l.s.y;
     const d = Math.max(Math.hypot(dx, dy), 0.01);
     const rest = restLength(l);
-    const f = (d - rest) * sim.linkK * (l.type === "cross" ? 0.35 : 1) * (0.3 + a);
+    const f = (d - rest) * sim.linkK * (l.type === "cross" ? 0.35 : l.type === "reaction" ? 0.4 : 1) * (0.3 + a);
     const fx = dx / d * f, fy = dy / d * f;
     const ws = weight(l.s), wt = weight(l.t);
     l.s.vx += fx * ws; l.s.vy += fy * ws;
@@ -502,10 +562,11 @@ function weight(n) {
 }
 function reheat(v = 1) { sim.alpha = Math.max(sim.alpha, v); }
 
-/* 初始位置：按科目分左右两簇，减少纠缠 */
+/* 初始位置：按科目/分支分左右两簇，减少纠缠 */
 (function seed() {
   for (const n of nodes) {
-    const side = n.subject === "physics" ? -1 : 1;
+    const side = IS_CHEM ? (n.branch === "chem-org" ? 1 : -1)
+                         : (n.subject === "physics" ? -1 : 1);
     const r = n.type === "subject" ? 0 : 260;
     const ang = Math.random() * Math.PI * 2;
     n.x = side * r * 0.55 + Math.cos(ang) * (n.type === "book" ? 160 : 420) * (0.35 + Math.random() * 0.65);
@@ -592,6 +653,36 @@ function draw() {
       ctx.setLineDash([2 * DPR, 3.5 * DPR]);
       ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
       ctx.setLineDash([]);
+    } else if (l.type === "reaction") {
+      /* 化学反应连线：按反应类型着色的实线弧 */
+      const col = REACTION_COLOR[l.kind] || "#9fb7e8";
+      const filtered = reactionFilter && l.kind !== reactionFilter;
+      const hit = active || (reactionFilter && l.kind === reactionFilter);
+      ctx.globalAlpha = filtered ? 0.07 : 1;
+      ctx.strokeStyle = col + (hit ? "ee" : "55");
+      ctx.lineWidth = (hit ? 2.2 : 1.3) * DPR;
+      const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+      const nx = -(p2.y - p1.y), ny = p2.x - p1.x;
+      const len = Math.hypot(nx, ny) || 1;
+      const bow = Math.min(34, len * 0.1) * DPR;
+      const cx = mx + nx / len * bow, cy = my + ny / len * bow;
+      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.quadraticCurveTo(cx, cy, p2.x, p2.y); ctx.stroke();
+      /* 显示反应方程式 */
+      if (hit && cam.scale > 0.35) {
+        const qx = (p1.x + 2 * cx + p2.x) / 4, qy = (p1.y + 2 * cy + p2.y) / 4;
+        ctx.font = `${11 * DPR}px "PingFang SC","Microsoft YaHei",sans-serif`;
+        const eqText = l.eq || l.note || "";
+        const tw = ctx.measureText(eqText).width;
+        ctx.fillStyle = "#0b111fe8";
+        ctx.strokeStyle = col + "88"; ctx.lineWidth = DPR;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(qx - tw / 2 - 6 * DPR, qy - 10 * DPR, tw + 12 * DPR, 20 * DPR, 5 * DPR);
+        else ctx.rect(qx - tw / 2 - 6 * DPR, qy - 10 * DPR, tw + 12 * DPR, 20 * DPR);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = col; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(eqText, qx, qy);
+      }
+      ctx.globalAlpha = 1;
     } else {
       const dim = emphasize && !active;
       ctx.strokeStyle = dim ? "#ffc86622" : "#ffc866" + (active ? "cc" : "66");
@@ -615,21 +706,22 @@ function draw() {
     if (!n.visible) continue;
     const p = toScreen(n.x, n.y);
     if (p.x < -80 || p.y < -80 || p.x > W + 80 || p.y > H + 80) continue;
-    const c = SUBJ_COLOR[n.subject] || SUBJ_COLOR.physics;
+    const c = SUBJ_COLOR[n.subject] || (n.fillColor ? { main: n.fillColor } : SUBJ_COLOR.physics);
+    const cc = n.fillColor ? { main: n.fillColor, soft: n.fillColor + "26" } : c;
     const r = TYPE[n.type].r * cam.scale * DPR;
     const dimmed = (focusMode && !focusSet.has(n)) ||
                    (emphasize && emSet && !emSet.has(n) && n !== emphasize);
     const isHit = n === hoverNode || n === selectedNode || searchHits.has(n);
 
-    let fill = c.main, stroke = null, alpha = dimmed ? 0.16 : 1;
-    if (n.type === "book") fill = c.main;
-    if (n.type === "section" || n.type === "sub") fill = c.main + "cc";
+    let fill = cc.main, stroke = null, alpha = dimmed ? 0.16 : 1;
+    if (n.type === "book") fill = cc.main;
+    if (n.type === "section" || n.type === "sub") fill = (n.fillColor || c.main) + "cc";
     if (n.type === "kp") fill = KPTYPE_COLOR[n.ktype] || "#9fb7e8";
 
     ctx.globalAlpha = alpha;
     if (n.type === "subject" || n.type === "book") {
       const glow = ctx.createRadialGradient(p.x, p.y, r * 0.2, p.x, p.y, r * (n.type === "subject" ? 2.6 : 2));
-      glow.addColorStop(0, c.soft); glow.addColorStop(1, "transparent");
+      glow.addColorStop(0, cc.soft); glow.addColorStop(1, "transparent");
       ctx.fillStyle = glow;
       ctx.beginPath(); ctx.arc(p.x, p.y, r * (n.type === "subject" ? 2.6 : 2), 0, 7); ctx.fill();
     }
@@ -776,6 +868,20 @@ function ev_px(rect) { return lastEv ? lastEv.x - rect.left + 16 : 0; }
 function ev_py(rect) { return lastEv ? lastEv.y - rect.top + 16 : 0; }
 
 function typeDesc(n) {
+  if (IS_CHEM) {
+    if (n.type === "book") return n.full;
+    if (n.type === "chapter") {
+      const br = chemBranchOf.get(n.id), tp = chemTopicOf.get(n.id);
+      return `${br ? br.name : ""} · 专题${tp ? ` · ${tp.items.length} 个节点` : ""}`;
+    }
+    if (n.type === "section") {
+      const tp = chemTopicOf.get(n.id);
+      const rn = links.filter(l => l.type === "reaction" && (l.s === n || l.t === n)).length;
+      return `${tp ? tp.name + " · " : ""}${n.cat || "节点"}${n.info ? "：" + n.info : ""}${rn ? `（参与 ${rn} 个反应）` : ""}`;
+    }
+    if (n.type === "subject") return "无机 + 有机 · 以反应类型连接的化学知识图谱";
+    return n.label;
+  }
   const book = BOOKS.find(b => b.id === n.book);
   if (n.type === "kp") return `【${n.ktype}】${n.text || ""}`;
   if (n.type === "book") return `教材 · ${n.full}`;
@@ -810,7 +916,61 @@ function selectNode(n) {
   detail.classList.remove("hidden");
 }
 
+function renderChemDetail(n) {
+  let crumb = "", extra = "";
+  const branch = chemBranchOf.get(n.id);
+  const tag = n.type === "section"
+    ? `<span class="tag" style="color:${n.fillColor};border-color:${n.fillColor}66">${esc(n.cat || "节点")}</span><span class="tag" style="color:${branch ? branch.color : "#dbe4f5"}">${esc(branch ? branch.name : "")}</span>`
+    : `<span class="tag">${TYPE[n.type].label}</span><span class="tag" style="color:${branch ? branch.color : "#dbe4f5"}">${esc(branch ? branch.name : "化学")}</span>`;
+
+  if (n.type === "section") {
+    const tp = chemTopicOf.get(n.id);
+    crumb = `${branch.name} · ${tp.name}`;
+    extra = (n.info ? `<div class="kptext">${esc(n.info)}</div>` : "")
+      + (n.derive ? `<h4>公式推导</h4><div class="kpderive">` + n.derive.map(d => `<div class="dstep">${esc(d)}</div>`).join("") + `</div>` : "")
+      + (n.img && n.img.length ? `<h4>图像解析</h4>` + n.img.map(k => KP_IMG[k] ? `<div class="kpimg">${KP_IMG[k]}</div>` : "").join("") : "")
+      + (n.example ? `<h4>经典例题</h4><div class="kpexample"><div class="q">${esc(n.example.q)}</div><details><summary>查看答案</summary><div class="a">${esc(n.example.a)}</div></details></div>` : "")
+      + (n.wrong ? `<h4>易错点 · 误区</h4><div class="kpwrong">⚠ ${esc(n.wrong)}</div>` : "");
+  } else if (n.type === "chapter") {
+    const tp = chemTopicOf.get(n.id);
+    crumb = `${branch.name} 专题`;
+    extra = `<h4>节点（${tp.items.length}）</h4><ul>` +
+      tp.items.map(it => `<li data-target="${it.id}"><span class="kpt" style="color:${it.cat === "概念" ? "#9fb7e8" : branch.color};border-color:${(it.cat === "概念" ? "#9fb7e8" : branch.color) + "55"}">${esc(it.cat || "")}</span>${esc(it.label)}</li>`).join("") + "</ul>";
+  } else if (n.type === "book") {
+    crumb = branch.desc;
+    extra = `<h4>专题（${branch.topics.length}）</h4><ul>` +
+      branch.topics.map(t => `<li data-target="${t.id}">${esc(t.name)}</li>`).join("") + "</ul>";
+  } else if (n.type === "subject") {
+    crumb = "参考人教版高中化学教材（必修两册 + 选择性必修三册）";
+    const inorg = CHEM.branches[0], org = CHEM.branches[1];
+    const cnt = br => br.topics.reduce((a, t) => a + t.items.length, 0);
+    extra = `<h4>分支</h4><ul><li data-target="${inorg.id}">${inorg.name}：${inorg.topics.length} 专题 · ${cnt(inorg)} 节点</li>` +
+      `<li data-target="${org.id}">${org.name}：${org.topics.length} 专题 · ${cnt(org)} 节点</li><li>反应连线 ${chemStats.reactions} 条</li></ul>`;
+  }
+
+  const rels = links.filter(l => l.type === "reaction" && (l.s === n || l.t === n));
+  const relHtml = rels.length ? `<h4>参与的化学反应（${rels.length}）</h4><ul>` +
+    rels.map(l => {
+      const other = l.s === n ? l.t : l.s;
+      const col = REACTION_COLOR[l.kind] || "#9fb7e8";
+      return `<li data-target="${other.id}"><span class="kind" style="color:${col};border-color:${col}66">${esc(l.kind)}</span>${esc(other.label)}<br><span class="linknote">${esc(l.note || l.eq || "")}</span></li>`;
+    }).join("") + "</ul>" : "";
+
+  detailBody.innerHTML = `${tag}<h3>${esc(n.label)}</h3><div class="crumb">${esc(crumb)}</div>${extra}${relHtml}
+    <button class="focusbtn" id="focusBtn">◎ 聚焦该节点</button>`;
+  detailBody.querySelectorAll("li[data-target]").forEach(li => {
+    li.addEventListener("click", () => {
+      const t = nodeById.get(li.dataset.target);
+      if (t) { selectNode(t); centerOn(t, 1.4); }
+    });
+  });
+  document.getElementById("focusBtn").addEventListener("click", () => {
+    focusSet = neighborsOf(n); focusMode = true; centerOn(n, 1.6);
+  });
+}
+
 function renderDetail(n) {
+  if (IS_CHEM) return renderChemDetail(n);
   const book = BOOKS.find(b => b.id === n.book);
   let crumb = "", extra = "";
   const ktypeBadge = n.type === "kp"
@@ -927,9 +1087,27 @@ function fitView() {
 
 /* ---------- 8. 侧栏 UI ---------- */
 /* 图例 */
-const colorNote = PAGE_SUBJECT === "all" ? "（蓝=物理，绿=生物，橙=地理）"
-  : PAGE_SUBJECT === "physics" ? "（蓝色系）"
-  : PAGE_SUBJECT === "biology" ? "（绿色系）" : "（橙色系）";
+if (IS_CHEM) {
+  const kinds = [...new Set(links.filter(l => l.type === "reaction").map(l => l.kind))];
+  document.getElementById("legend").innerHTML =
+    `<div class="row" style="margin-bottom:4px"><span class="dmark" style="background:#4da3ff"></span>物质节点<span style="color:#66748f;font-size:11px">（蓝=无机，橙=有机，灰=概念）</span></div>` +
+    kinds.map(k => `<div class="row" data-kind="${k}" style="cursor:pointer"><span class="swatch" style="border-top:2px solid ${REACTION_COLOR[k] || "#9fb7e8"}"></span>${k}</div>`).join("") +
+    `<div class="muted" style="margin-top:6px">点击反应类型可只看同类反应；悬停或选中节点时连线上显示化学方程式</div>`;
+  document.querySelectorAll("#legend [data-kind]").forEach(el => {
+    el.addEventListener("click", () => {
+      const k = el.dataset.kind;
+      reactionFilter = reactionFilter === k ? null : k;
+      document.querySelectorAll("#legend [data-kind]").forEach(e2 => {
+        e2.style.background = (reactionFilter && e2.dataset.kind === reactionFilter) ? "#ffc86622" : "";
+      });
+    });
+  });
+} else {
+if (typeof colorNote === "undefined") {
+  var colorNote = PAGE_SUBJECT === "all" ? "（蓝=物理，绿=生物，橙=地理）"
+    : PAGE_SUBJECT === "physics" ? "（蓝色系）"
+    : PAGE_SUBJECT === "biology" ? "（绿色系）" : "（橙色系）";
+}
 document.getElementById("legend").innerHTML =
   [["科目", "#ffffff", 10], ["教材", "#4da3ff", 7.5], ["章", "#4da3ff", 5], ["节", "#4da3ffcc", 3], ["子目", "#4da3ffaa", 2.2]]
     .map(([lab, col, r]) => `<div class="row"><span class="dot" style="background:${col};width:${r * 2}px;height:${r * 2}px"></span>${lab}<span style="color:#66748f;font-size:11px">${colorNote}</span></div>`).join("") +
@@ -940,9 +1118,15 @@ document.getElementById("legend").innerHTML =
     `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#8291b4">` +
     `<span class="dmark" style="background:${KPTYPE_COLOR[t]}"></span>${t}</span>`).join("") +
   `</div>`;
+}
 
 /* 统计 */
 (function () {
+  if (IS_CHEM) {
+    document.getElementById("stats").textContent =
+      `无机 ${CHEM.branches[0].topics.length} 专题 ｜ 有机 ${CHEM.branches[1].topics.length} 专题 ｜ 节点 ${chemStats.items} · 反应连线 ${chemStats.reactions}`;
+    return;
+  }
   const base = pageSubjects.map(s => {
     const t = stats[s.id];
     const kp = kpSubjectCount[s.id] || 0;
@@ -971,6 +1155,30 @@ for (const book of pageBooks) {
         </div>`).join("")}
     </div>`;
   bookList.appendChild(item);
+}
+
+/* 化学模式侧栏：按无机/有机分组列出专题与节点 */
+if (IS_CHEM) {
+  for (const br of CHEM.branches) {
+    const group = document.createElement("div");
+    group.style.cssText = `color:${br.color};font-weight:700;font-size:13px;margin:6px 0 2px;letter-spacing:2px`;
+    group.textContent = br.name;
+    bookList.appendChild(group);
+    for (const topic of br.topics) {
+      const item = document.createElement("div");
+      item.className = "book-item";
+      item.innerHTML = `
+        <div class="book-head" data-book="${topic.id}">
+          <span class="chip" style="background:${br.color}"></span>
+          <span>${esc(topic.name)}</span>
+          <span class="eye" data-eye="${topic.id}" title="显示/隐藏">◉</span>
+        </div>
+        <div class="chapters">
+          ${topic.items.map(it => `<div class="ch-item" data-target="${it.id}">· ${esc(it.label)} <span class="num">${esc(it.cat || "")}</span></div>`).join("")}
+        </div>`;
+      bookList.appendChild(item);
+    }
+  }
 }
 bookList.querySelector(".book-head .eye");
 bookList.addEventListener("click", ev => {
@@ -1011,7 +1219,8 @@ document.querySelectorAll("#subjectTabs .tab").forEach(btn => {
 document.getElementById("btnFit").addEventListener("click", fitView);
 document.getElementById("btnShuffle").addEventListener("click", () => {
   for (const n of nodes) {
-    const side = n.subject === "physics" ? -1 : 1;
+    const side = IS_CHEM ? (n.branch === "chem-org" ? 1 : -1)
+                         : (n.subject === "physics" ? -1 : 1);
     n.x = side * 200 + (Math.random() - 0.5) * 700;
     n.y = (Math.random() - 0.5) * 600;
     n.vx = n.vy = 0;

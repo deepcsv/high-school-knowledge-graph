@@ -222,6 +222,7 @@ body {
 .brand .logo.phy { color: var(--phy); text-shadow: 0 0 14px #4da3ff88; }
 .brand .logo.bio { color: var(--bio); text-shadow: 0 0 14px #4cd68a88; }
 .brand .logo.geo { color: var(--geo); text-shadow: 0 0 14px #ffab5e88; }
+.brand .logo.chem { color: var(--accent); text-shadow: 0 0 14px #ffc86688; }
 
 /* ===== 总览入口页 ===== */
 body.hub { overflow: auto; }
@@ -243,10 +244,13 @@ body.hub { overflow: auto; }
 .hub-card.biology:hover { border-color: var(--bio); box-shadow: 0 14px 44px #4cd68a22; }
 .hub-card.geo { background: linear-gradient(160deg, #2a1e10, #0e1526 70%); }
 .hub-card.geo:hover { border-color: var(--geo); box-shadow: 0 14px 44px #ffab5e22; }
+.hub-card.chem { background: linear-gradient(160deg, #241a08, #0e1526 70%); }
+.hub-card.chem:hover { border-color: var(--accent); box-shadow: 0 14px 44px #ffc86622; }
 .hub-card .subject { font-size: 30px; font-weight: 700; letter-spacing: 8px; }
 .hub-card.physics .subject { color: var(--phy); }
 .hub-card.biology .subject { color: var(--bio); }
 .hub-card.geo .subject { color: var(--geo); }
+.hub-card.chem .subject { color: var(--accent); }
 .hub-card .nums { margin-top: 14px; font-size: 14px; color: var(--text); opacity: .85; }
 .hub-card .desc { margin-top: 8px; font-size: 12.5px; color: var(--muted); line-height: 1.7; }
 .hub-card .go { display: inline-block; margin-top: 24px; color: var(--accent); font-size: 14px; }

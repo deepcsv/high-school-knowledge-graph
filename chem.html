@@ -3,28 +3,28 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>高中地理知识图谱 | 人教版全套</title>
+<title>高中化学知识图谱 | 无机 · 有机（反应类型连接）</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header id="topbar">
   <div class="brand">
-    <span class="logo geo">◈</span>
+    <span class="logo chem">◈</span>
     <div>
-      <h1>高中地理知识图谱</h1>
-      <p id="subtitle">依据人教版全套电子教材目录生成</p>
+      <h1>高中化学知识图谱</h1>
+      <p id="subtitle">无机 · 有机两大分支，以反应类型连接（参考人教版必修+选择性必修）</p>
     </div>
   </div>
   <div class="searchbox">
-    <input id="search" type="text" placeholder="搜索章节 / 知识点…（回车定位下一个）" autocomplete="off">
+    <input id="search" type="text" placeholder="搜索物质 / 概念…（回车定位下一个）" autocomplete="off">
     <span id="searchCount"></span>
   </div>
   <nav id="subjectTabs" class="subnav">
     <a href="index.html">总览</a>
     <a href="physics.html">物理</a>
     <a href="biology.html">生物学</a>
-    <a href="geo.html" class="current">地理</a>
-    <a href="chem.html">化学</a>
+    <a href="chem.html" class="current">化学</a>
+    <a href="geo.html">地理</a>
   </nav>
 </header>
 
@@ -35,7 +35,7 @@
       <div id="legend"></div>
     </section>
     <section class="panel">
-      <h2>教材目录</h2>
+      <h2>专题目录</h2>
       <div id="stats" class="muted"></div>
       <div id="bookList"></div>
     </section>
@@ -43,10 +43,9 @@
       <button id="btnFit">⤢ 适配视图</button>
       <button id="btnShuffle">⟳ 重新布局</button>
       <button id="btnPause">⏸ 暂停运动</button>
-      <button id="btnKP">◆ 知识点：开</button>
     </section>
     <footer class="panel muted">
-      目录提取自人教版电子教材；连线为教材章节层级，<span class="crossline">虚线弧</span>为跨章知识关联。拖动节点、滚轮缩放、点击查看详情。
+      内容参考人教版高中化学教材；<span class="crossline">彩色弧线</span>为化学反应连线（颜色=反应类型），悬停或点击节点可在连线上看到化学方程式。拖动节点、滚轮缩放、点击查看详情。
     </footer>
   </aside>
 
@@ -60,9 +59,8 @@
   </main>
 </div>
 
-<script>window.PAGE_SUBJECT = "geo";</script>
-<script src="data.js"></script>
-<script src="knowledge.js"></script>
+<script>window.PAGE_SUBJECT = "chemistry";</script>
+<script src="chem.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
